@@ -1,0 +1,12 @@
+[property]
+enable=1
+config-width=1920
+config-height=1080
+osd-mode=2
+display-font-size=12
+
+[roi-filtering-stream-0]
+enable=1
+roi-PISCINE=843;223;1402;400;1154;572;593;302
+inverse-roi=0
+class-id=0

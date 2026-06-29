@@ -1,0 +1,15 @@
+# Modèles IA (trop lourds, regénérables)
+*.engine
+*.onnx
+peoplenet_vpruned_quantized_decrypted_v2.3.4/
+
+# Enregistrements vidéo (vie privée)
+*.mkv
+*.mp4
+
+# Fichiers de config avec credentials réels
+configs/deepstream_app_peoplenet.txt
+
+# Fichiers système
+.DS_Store
+*.log
