@@ -13,3 +13,5 @@ configs/deepstream_app_peoplenet.txt
 # Fichiers système
 .DS_Store
 *.log
+deepstream_python_apps/
+*.whl
