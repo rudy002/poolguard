@@ -17,3 +17,4 @@ deepstream_python_apps/
 *.whl
 __pycache__/
 alert_log*.txt
+telegram_config.py

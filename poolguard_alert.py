@@ -32,6 +32,7 @@ from common.platform_info import PlatformInfo
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
 import os
+from notifications import send_telegram_alert
 
 import pyds
 
@@ -77,6 +78,7 @@ def check_pool_alarm(objInROIcnt):
         alert_active = False
         pool_entry_time = None
         print(">>> SYSTEME DESARME <<<")
+        send_telegram_alert("🔓 PoolGuard: systeme desarme")
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -87,11 +89,13 @@ def check_pool_alarm(objInROIcnt):
         if ARMED and not alert_active and (now - pool_entry_time) >= ALERT_AFTER_SECONDS:
             alert_active = True
             print(">>> ALERTE: presence detectee dans la piscine <<<")
+            send_telegram_alert("🚨 PoolGuard: presence detectee dans la piscine !")
     else:
         pool_entry_time = None
         if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
             ARMED = True
             print(">>> SYSTEME ARME (30 min sans presence) <<<")
+            send_telegram_alert("🔒 PoolGuard: systeme arme, piscine surveillee")
 
 # nvanlytics_src_pad_buffer_probe  will extract metadata received on nvtiler sink pad
 # and update params for drawing rectangle, object information etc.
