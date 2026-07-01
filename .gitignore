@@ -16,3 +16,4 @@ configs/deepstream_app_peoplenet.txt
 deepstream_python_apps/
 *.whl
 __pycache__/
+alert_log*.txt

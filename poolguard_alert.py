@@ -31,12 +31,23 @@ import platform
 from common.platform_info import PlatformInfo
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
+import os
 
 import pyds
 
 perf_data = None
 NVDS_USER_META_OBJ_ANALYTICS = pyds.nvds_get_user_meta_type('NVIDIA.DSANALYTICSOBJ.USER_META')
 NVDS_USER_META_FRAME_ANALYTICS = pyds.nvds_get_user_meta_type('NVIDIA.DSANALYTICSFRAME.USER_META')
+
+# --- Etat de l'alarme piscine ---
+ARM_AFTER_SECONDS = 30 * 60   # 30 min sans presence -> armement auto
+ALERT_AFTER_SECONDS = 3       # 3 sec de presence en mode arme -> alerte
+DISARM_FLAG_FILE = "disarm.flag"
+
+ARMED = False
+alert_active = False
+last_person_in_pool_time = time.time()
+pool_entry_time = None
 
 MAX_DISPLAY_LEN=64
 PGIE_CLASS_ID_VEHICLE = 0
@@ -52,6 +63,35 @@ GST_CAPS_FEATURES_NVMM="memory:NVMM"
 OSD_PROCESS_MODE= 0
 OSD_DISPLAY_TEXT= 1
 pgie_classes_str= ["Vehicle", "TwoWheeler", "Person","RoadSign"]
+
+def check_pool_alarm(objInROIcnt):
+    """Applique la logique d'armement/alerte a partir du comptage ROI de la frame."""
+    global ARMED, alert_active, last_person_in_pool_time, pool_entry_time
+
+    now = time.time()
+
+    # Desarmement manuel : creer un fichier disarm.flag (ex: touch disarm.flag)
+    if os.path.exists(DISARM_FLAG_FILE):
+        os.remove(DISARM_FLAG_FILE)
+        ARMED = False
+        alert_active = False
+        pool_entry_time = None
+        print(">>> SYSTEME DESARME <<<")
+
+    person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
+
+    if person_in_pool:
+        last_person_in_pool_time = now
+        if pool_entry_time is None:
+            pool_entry_time = now
+        if ARMED and not alert_active and (now - pool_entry_time) >= ALERT_AFTER_SECONDS:
+            alert_active = True
+            print(">>> ALERTE: presence detectee dans la piscine <<<")
+    else:
+        pool_entry_time = None
+        if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
+            ARMED = True
+            print(">>> SYSTEME ARME (30 min sans presence) <<<")
 
 # nvanlytics_src_pad_buffer_probe  will extract metadata received on nvtiler sink pad
 # and update params for drawing rectangle, object information etc.
@@ -132,6 +172,7 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
                     if user_meta_data.objLCCumCnt: print("Linecrossing Cumulative: {0}".format(user_meta_data.objLCCumCnt))
                     if user_meta_data.objLCCurrCnt: print("Linecrossing Current Frame: {0}".format(user_meta_data.objLCCurrCnt))
                     if user_meta_data.ocStatus: print("Overcrowding status: {0}".format(user_meta_data.ocStatus))
+                    check_pool_alarm(user_meta_data.objInROIcnt)
             except StopIteration:
                 break
             try:
