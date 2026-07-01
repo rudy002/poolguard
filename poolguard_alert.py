@@ -41,14 +41,17 @@ NVDS_USER_META_OBJ_ANALYTICS = pyds.nvds_get_user_meta_type('NVIDIA.DSANALYTICSO
 NVDS_USER_META_FRAME_ANALYTICS = pyds.nvds_get_user_meta_type('NVIDIA.DSANALYTICSFRAME.USER_META')
 
 # --- Etat de l'alarme piscine ---
-ARM_AFTER_SECONDS = 30 * 60   # 30 min sans presence -> armement auto
+ARM_AFTER_SECONDS = 30 * 60    # 30 min sans presence -> armement auto
 ALERT_AFTER_SECONDS = 3       # 3 sec de presence en mode arme -> alerte
+GRACE_PERIOD_SECONDS = 1.5   # tolerance aux coupures de detection (tracking qui clignote)
 DISARM_FLAG_FILE = "disarm.flag"
 
 ARMED = False
 alert_active = False
 last_person_in_pool_time = time.time()
 pool_entry_time = None
+display_warning_text = None
+
 
 MAX_DISPLAY_LEN=64
 PGIE_CLASS_ID_VEHICLE = 0
@@ -67,7 +70,7 @@ pgie_classes_str= ["Vehicle", "TwoWheeler", "Person","RoadSign"]
 
 def check_pool_alarm(objInROIcnt):
     """Applique la logique d'armement/alerte a partir du comptage ROI de la frame."""
-    global ARMED, alert_active, last_person_in_pool_time, pool_entry_time
+    global ARMED, alert_active, last_person_in_pool_time, pool_entry_time, display_warning_text
 
     now = time.time()
 
@@ -79,6 +82,7 @@ def check_pool_alarm(objInROIcnt):
         pool_entry_time = None
         print(">>> SYSTEME DESARME <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme")
+        display_warning_text = None
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -90,8 +94,11 @@ def check_pool_alarm(objInROIcnt):
             alert_active = True
             print(">>> ALERTE: presence detectee dans la piscine <<<")
             send_telegram_alert("🚨 PoolGuard: presence detectee dans la piscine !")
+            display_warning_text = "⚠️ WARNING - POOL"
     else:
-        pool_entry_time = None
+        # Ne reinitialise pool_entry_time que si le "trou" de detection depasse la periode de tolerance
+        if pool_entry_time is not None and (now - last_person_in_pool_time) > GRACE_PERIOD_SECONDS:
+            pool_entry_time = None
         if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
             ARMED = True
             print(">>> SYSTEME ARME (30 min sans presence) <<<")
@@ -153,6 +160,11 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
                         if user_meta_data.lcStatus: print("Object {0} line crossing status: {1}".format(obj_meta.object_id, user_meta_data.lcStatus))
                         if user_meta_data.ocStatus: print("Object {0} overcrowding status: {1}".format(obj_meta.object_id, user_meta_data.ocStatus))
                         if user_meta_data.roiStatus: print("Object {0} roi status: {1}".format(obj_meta.object_id, user_meta_data.roiStatus))
+                        if user_meta_data.roiStatus:
+                            obj_meta.rect_params.border_color.set(1.0, 0.0, 0.0, 1.0)  # rouge
+                            obj_meta.rect_params.border_width = 4
+                        else:
+                            obj_meta.rect_params.border_color.set(0.0, 1.0, 0.0, 1.0)  # vert
                 except StopIteration:
                     break
 
@@ -184,6 +196,20 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
             except StopIteration:
                 break
         
+        # Affichage du texte d'alerte a l'ecran si necessaire
+        if display_warning_text:
+            display_meta = pyds.nvds_acquire_display_meta_from_pool(batch_meta)
+            display_meta.num_labels = 1
+            py_nvosd_text_params = display_meta.text_params[0]
+            py_nvosd_text_params.display_text = display_warning_text
+            py_nvosd_text_params.x_offset = 50
+            py_nvosd_text_params.y_offset = 50
+            py_nvosd_text_params.font_params.font_name = "Serif"
+            py_nvosd_text_params.font_params.font_size = 30
+            py_nvosd_text_params.font_params.font_color.set(1.0, 0.0, 0.0, 1.0)
+            py_nvosd_text_params.set_bg_clr = 1
+            py_nvosd_text_params.text_bg_clr.set(0.0, 0.0, 0.0, 1.0)
+            pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
         print("Frame Number=", frame_number, "stream id=", frame_meta.pad_index, "Number of Objects=",num_rects,"Vehicle_count=",obj_counter[PGIE_CLASS_ID_VEHICLE],"Person_count=",obj_counter[PGIE_CLASS_ID_PERSON])
         # Update frame rate through this probe
         stream_index = "stream{0}".format(frame_meta.pad_index)

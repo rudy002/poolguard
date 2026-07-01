@@ -18,3 +18,4 @@ deepstream_python_apps/
 __pycache__/
 alert_log*.txt
 telegram_config.py
+debug_screen.txt
