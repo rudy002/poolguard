@@ -19,3 +19,4 @@ __pycache__/
 alert_log*.txt
 telegram_config.py
 debug_screen.txt
+debug_telegram_cmd.txt

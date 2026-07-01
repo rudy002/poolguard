@@ -32,7 +32,8 @@ from common.platform_info import PlatformInfo
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
 import os
-from notifications import send_telegram_alert
+from notifications import send_telegram_alert, get_telegram_command
+
 
 import pyds
 
@@ -103,6 +104,32 @@ def check_pool_alarm(objInROIcnt):
             ARMED = True
             print(">>> SYSTEME ARME (30 min sans presence) <<<")
             send_telegram_alert("🔒 PoolGuard: systeme arme, piscine surveillee")
+
+def check_telegram_commands():
+    """Verifie et traite les commandes Telegram (/arm, /disarm, /status). Appelee toutes les 3s."""
+    global ARMED, alert_active, pool_entry_time, display_warning_text
+
+    command = get_telegram_command()
+    if command is None:
+        return True  # continue d'etre appelee (requis par GLib.timeout_add)
+
+    if command == "/arm":
+        ARMED = True
+        print(">>> SYSTEME ARME (commande manuelle) <<<")
+        send_telegram_alert("🔒 PoolGuard: systeme arme manuellement")
+    elif command == "/disarm":
+        ARMED = False
+        alert_active = False
+        pool_entry_time = None
+        display_warning_text = None
+        print(">>> SYSTEME DESARME (commande manuelle) <<<")
+        send_telegram_alert("🔓 PoolGuard: systeme desarme manuellement")
+    elif command == "/status":
+        etat = "🔒 Arme" if ARMED else "🔓 Desarme"
+        send_telegram_alert(f"Statut PoolGuard: {etat}")
+
+    return True  # continue d'etre appelee
+
 
 # nvanlytics_src_pad_buffer_probe  will extract metadata received on nvtiler sink pad
 # and update params for drawing rectangle, object information etc.
@@ -483,6 +510,8 @@ def main(args):
         nvanalytics_src_pad.add_probe(Gst.PadProbeType.BUFFER, nvanalytics_src_pad_buffer_probe, 0)
         # perf callback function to print fps every 5 sec
         GLib.timeout_add(5000, perf_data.perf_print_callback)
+        GLib.timeout_add(3000, check_telegram_commands)
+
 
     # List the sources
     print("Now playing...")
