@@ -11,6 +11,9 @@ peoplenet_vpruned_quantized_decrypted_v2.3.4/
 configs/deepstream_app_peoplenet.txt
 camera_config.py
 
+# Instructions Claude Code (notes de travail perso)
+CLAUDE.md
+
 # Fichiers système
 .DS_Store
 *.log
