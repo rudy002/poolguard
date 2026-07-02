@@ -33,6 +33,8 @@ from common.bus_call import bus_call
 from common.FPS import PERF_DATA
 import os
 from notifications import send_telegram_alert, get_telegram_command
+from recorder import start_recording, stop_recording
+
 
 
 import pyds
@@ -84,6 +86,7 @@ def check_pool_alarm(objInROIcnt):
         print(">>> SYSTEME DESARME <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme")
         display_warning_text = None
+        stop_recording()
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -96,6 +99,7 @@ def check_pool_alarm(objInROIcnt):
             print(">>> ALERTE: presence detectee dans la piscine <<<")
             send_telegram_alert("🚨 PoolGuard: presence detectee dans la piscine !")
             display_warning_text = "⚠️ WARNING - POOL"
+            start_recording()
     else:
         # Ne reinitialise pool_entry_time que si le "trou" de detection depasse la periode de tolerance
         if pool_entry_time is not None and (now - last_person_in_pool_time) > GRACE_PERIOD_SECONDS:
@@ -124,6 +128,7 @@ def check_telegram_commands():
         display_warning_text = None
         print(">>> SYSTEME DESARME (commande manuelle) <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme manuellement")
+        stop_recording()
     elif command == "/status":
         etat = "🔒 Arme" if ARMED else "🔓 Desarme"
         send_telegram_alert(f"Statut PoolGuard: {etat}")
