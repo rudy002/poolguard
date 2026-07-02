@@ -2,7 +2,8 @@ import subprocess
 import time
 import os
 
-CAMERA_URL = "rtsp://admin:MOT_DE_PASSE_RETIRE@10.0.0.116:554/Streaming/Channels/101"
+from camera_config import CAMERA_URL
+
 RECORDINGS_DIR = "recordings"
 
 _recording_process = None

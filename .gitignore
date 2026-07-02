@@ -9,6 +9,7 @@ peoplenet_vpruned_quantized_decrypted_v2.3.4/
 
 # Fichiers de config avec credentials réels
 configs/deepstream_app_peoplenet.txt
+camera_config.py
 
 # Fichiers système
 .DS_Store
