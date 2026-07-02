@@ -36,6 +36,9 @@ def get_telegram_command():
     for update in data["result"]:
         _last_update_id = update["update_id"]
         message = update.get("message", {})
+        # Securite : n'accepte que les messages venant du chat autorise
+        if str(message.get("chat", {}).get("id")) != str(TELEGRAM_CHAT_ID):
+            continue
         text = message.get("text", "")
         if text.startswith("/"):
             command = text.strip()

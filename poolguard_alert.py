@@ -83,6 +83,8 @@ def check_pool_alarm(objInROIcnt):
         ARMED = False
         alert_active = False
         pool_entry_time = None
+        # Remet l'horloge a zero : sans ca, le systeme peut se re-armer a la frame suivante
+        last_person_in_pool_time = now
         print(">>> SYSTEME DESARME <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme")
         display_warning_text = None
@@ -111,7 +113,7 @@ def check_pool_alarm(objInROIcnt):
 
 def check_telegram_commands():
     """Verifie et traite les commandes Telegram (/arm, /disarm, /status). Appelee toutes les 3s."""
-    global ARMED, alert_active, pool_entry_time, display_warning_text
+    global ARMED, alert_active, pool_entry_time, display_warning_text, last_person_in_pool_time
 
     command = get_telegram_command()
     if command is None:
@@ -126,6 +128,8 @@ def check_telegram_commands():
         alert_active = False
         pool_entry_time = None
         display_warning_text = None
+        # Remet l'horloge a zero : sans ca, le systeme peut se re-armer a la frame suivante
+        last_person_in_pool_time = time.time()
         print(">>> SYSTEME DESARME (commande manuelle) <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme manuellement")
         stop_recording()
