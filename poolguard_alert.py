@@ -47,6 +47,7 @@ NVDS_USER_META_FRAME_ANALYTICS = pyds.nvds_get_user_meta_type('NVIDIA.DSANALYTIC
 ARM_AFTER_SECONDS = 30 * 60    # 30 min sans presence -> armement auto
 ALERT_AFTER_SECONDS = 3       # 3 sec de presence en mode arme -> alerte
 GRACE_PERIOD_SECONDS = 1.5   # tolerance aux coupures de detection (tracking qui clignote)
+ALERT_END_AFTER_EMPTY_SECONDS = 30   # piscine vide 30s pendant une alerte -> fin d'alerte + arret enregistrement
 DISARM_FLAG_FILE = "disarm.flag"
 
 ARMED = False
@@ -106,6 +107,14 @@ def check_pool_alarm(objInROIcnt):
         # Ne reinitialise pool_entry_time que si le "trou" de detection depasse la periode de tolerance
         if pool_entry_time is not None and (now - last_person_in_pool_time) > GRACE_PERIOD_SECONDS:
             pool_entry_time = None
+        # Fin d'alerte automatique : piscine vide assez longtemps -> arret enregistrement,
+        # le systeme reste arme (une nouvelle entree redeclenchera une alerte)
+        if alert_active and (now - last_person_in_pool_time) >= ALERT_END_AFTER_EMPTY_SECONDS:
+            alert_active = False
+            display_warning_text = None
+            print(">>> FIN D'ALERTE: piscine vide, enregistrement sauvegarde <<<")
+            send_telegram_alert("✅ PoolGuard: piscine vide, fin d'alerte (enregistrement sauvegarde)")
+            stop_recording()
         if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
             ARMED = True
             print(">>> SYSTEME ARME (30 min sans presence) <<<")
