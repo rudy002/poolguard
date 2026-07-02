@@ -1,16 +1,23 @@
+import threading
+
 import requests
 from telegram_config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 _last_update_id = None
 
 
-def send_telegram_alert(message):
-    """Envoie un message Telegram, sans bloquer le pipeline en cas d'echec."""
+def _send(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": message}, timeout=5)
     except Exception as e:
         print(f"[TELEGRAM] Echec envoi: {e}")
+
+
+def send_telegram_alert(message):
+    """Envoie un message Telegram dans un thread : ne bloque jamais le pipeline video,
+    meme si Telegram est lent ou injoignable."""
+    threading.Thread(target=_send, args=(message,), daemon=True).start()
 
 
 def get_telegram_command():
