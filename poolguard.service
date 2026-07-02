@@ -1,0 +1,22 @@
+[Unit]
+Description=PoolGuard - surveillance piscine par IA (DeepStream + PeopleNet)
+# Attendre le reseau (camera RTSP) et la session graphique (affichage nv3dsink)
+Wants=network-online.target
+After=network-online.target graphical.target
+
+[Service]
+Type=simple
+User=rudyh
+WorkingDirectory=/ssd/poolguard
+# Acces a l'ecran de la session auto-ouverte de rudyh (X11, sans xhost)
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+# Sans argument : l'URL camera vient de camera_config.py (pas de secret ici ni dans ps aux)
+ExecStart=/usr/bin/python3 /ssd/poolguard/poolguard_alert.py
+# Redemarre en cas de plantage ou d'arret inattendu (coupure camera, bug...)
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+
+[Install]
+WantedBy=graphical.target

@@ -28,6 +28,7 @@ import time
 import sys
 import math
 import platform
+import signal
 from common.platform_info import PlatformInfo
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
@@ -49,6 +50,9 @@ ALERT_AFTER_SECONDS = 3       # 3 sec de presence en mode arme -> alerte
 GRACE_PERIOD_SECONDS = 1.5   # tolerance aux coupures de detection (tracking qui clignote)
 ALERT_END_AFTER_EMPTY_SECONDS = 30   # piscine vide 30s pendant une alerte -> fin d'alerte + arret enregistrement
 DISARM_FLAG_FILE = "disarm.flag"
+# Logs detailles par frame (numeros, comptages...) : utile en debug, trop bruyant en service
+# (journal systemd sur microSD). Activer avec : DEBUG_LOGS=1 python3 poolguard_alert.py ...
+DEBUG_LOGS = os.environ.get("DEBUG_LOGS", "0") == "1"
 
 ARMED = False
 alert_active = False
@@ -185,7 +189,7 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
         PGIE_CLASS_ID_BICYCLE:0,
         PGIE_CLASS_ID_ROADSIGN:0
         }
-        print("#"*50)
+        if DEBUG_LOGS: print("#"*50)
         while l_obj:
             try: 
                 # Note that l_obj.data needs a cast to pyds.NvDsObjectMeta
@@ -201,10 +205,10 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
                     user_meta = pyds.NvDsUserMeta.cast(l_user_meta.data)
                     if user_meta.base_meta.meta_type == NVDS_USER_META_OBJ_ANALYTICS:
                         user_meta_data = pyds.NvDsAnalyticsObjInfo.cast(user_meta.user_meta_data)
-                        if user_meta_data.dirStatus: print("Object {0} moving in direction: {1}".format(obj_meta.object_id, user_meta_data.dirStatus))                    
-                        if user_meta_data.lcStatus: print("Object {0} line crossing status: {1}".format(obj_meta.object_id, user_meta_data.lcStatus))
-                        if user_meta_data.ocStatus: print("Object {0} overcrowding status: {1}".format(obj_meta.object_id, user_meta_data.ocStatus))
-                        if user_meta_data.roiStatus: print("Object {0} roi status: {1}".format(obj_meta.object_id, user_meta_data.roiStatus))
+                        if DEBUG_LOGS and user_meta_data.dirStatus: print("Object {0} moving in direction: {1}".format(obj_meta.object_id, user_meta_data.dirStatus))
+                        if DEBUG_LOGS and user_meta_data.lcStatus: print("Object {0} line crossing status: {1}".format(obj_meta.object_id, user_meta_data.lcStatus))
+                        if DEBUG_LOGS and user_meta_data.ocStatus: print("Object {0} overcrowding status: {1}".format(obj_meta.object_id, user_meta_data.ocStatus))
+                        if DEBUG_LOGS and user_meta_data.roiStatus: print("Object {0} roi status: {1}".format(obj_meta.object_id, user_meta_data.roiStatus))
                         if user_meta_data.roiStatus:
                             obj_meta.rect_params.border_color.set(1.0, 0.0, 0.0, 1.0)  # rouge
                             obj_meta.rect_params.border_width = 4
@@ -229,10 +233,10 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
                 user_meta = pyds.NvDsUserMeta.cast(l_user.data)
                 if user_meta.base_meta.meta_type == NVDS_USER_META_FRAME_ANALYTICS:
                     user_meta_data = pyds.NvDsAnalyticsFrameMeta.cast(user_meta.user_meta_data)
-                    if user_meta_data.objInROIcnt: print("Objs in ROI: {0}".format(user_meta_data.objInROIcnt))                    
-                    if user_meta_data.objLCCumCnt: print("Linecrossing Cumulative: {0}".format(user_meta_data.objLCCumCnt))
-                    if user_meta_data.objLCCurrCnt: print("Linecrossing Current Frame: {0}".format(user_meta_data.objLCCurrCnt))
-                    if user_meta_data.ocStatus: print("Overcrowding status: {0}".format(user_meta_data.ocStatus))
+                    if DEBUG_LOGS and user_meta_data.objInROIcnt: print("Objs in ROI: {0}".format(user_meta_data.objInROIcnt))
+                    if DEBUG_LOGS and user_meta_data.objLCCumCnt: print("Linecrossing Cumulative: {0}".format(user_meta_data.objLCCumCnt))
+                    if DEBUG_LOGS and user_meta_data.objLCCurrCnt: print("Linecrossing Current Frame: {0}".format(user_meta_data.objLCCurrCnt))
+                    if DEBUG_LOGS and user_meta_data.ocStatus: print("Overcrowding status: {0}".format(user_meta_data.ocStatus))
                     check_pool_alarm(user_meta_data.objInROIcnt)
             except StopIteration:
                 break
@@ -255,7 +259,7 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
             py_nvosd_text_params.set_bg_clr = 1
             py_nvosd_text_params.text_bg_clr.set(0.0, 0.0, 0.0, 1.0)
             pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
-        print("Frame Number=", frame_number, "stream id=", frame_meta.pad_index, "Number of Objects=",num_rects,"Vehicle_count=",obj_counter[PGIE_CLASS_ID_VEHICLE],"Person_count=",obj_counter[PGIE_CLASS_ID_PERSON])
+        if DEBUG_LOGS: print("Frame Number=", frame_number, "stream id=", frame_meta.pad_index, "Number of Objects=",num_rects,"Vehicle_count=",obj_counter[PGIE_CLASS_ID_VEHICLE],"Person_count=",obj_counter[PGIE_CLASS_ID_PERSON])
         # Update frame rate through this probe
         stream_index = "stream{0}".format(frame_meta.pad_index)
         global perf_data
@@ -264,7 +268,7 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
             l_frame=l_frame.next
         except StopIteration:
             break
-        print("#"*50)
+        if DEBUG_LOGS: print("#"*50)
 
     return Gst.PadProbeReturn.OK
 
@@ -336,10 +340,16 @@ def create_source_bin(index,uri):
     return nbin
 
 def main(args):
-    # Check input arguments
+    # Sans argument : utilise l'URL de camera_config.py (evite d'exposer le mot de passe
+    # dans la ligne de commande, visible par tous via ps aux)
     if len(args) < 2:
-        sys.stderr.write("usage: %s <uri1> [uri2] ... [uriN]\n" % args[0])
-        sys.exit(1)
+        try:
+            from camera_config import CAMERA_URL
+        except ImportError:
+            sys.stderr.write("usage: %s <uri1> [uri2] ... [uriN]\n" % args[0])
+            sys.stderr.write("(ou creer camera_config.py avec CAMERA_URL pour lancer sans argument)\n")
+            sys.exit(1)
+        args = args + [CAMERA_URL]
 
     global perf_data
     perf_data = PERF_DATA(len(args) - 1)
@@ -518,6 +528,16 @@ def main(args):
 
     # create an event loop and feed gstreamer bus mesages to it
     loop = GLib.MainLoop()
+
+    # Arret propre sur SIGTERM/SIGINT (systemctl stop, Ctrl+C) : sortir de la boucle
+    # pour que le nettoyage (pipeline NULL, stop_recording) s'execute
+    def quit_on_signal():
+        print("Signal d'arret recu, fermeture propre...")
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, quit_on_signal)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, quit_on_signal)
+
     bus = pipeline.get_bus()
     bus.add_signal_watch()
     bus.connect ("message", bus_call, loop)
@@ -546,6 +566,7 @@ def main(args):
         pass
     # cleanup
     print("Exiting app\n")
+    stop_recording()
     pipeline.set_state(Gst.State.NULL)
 
 if __name__ == '__main__':
