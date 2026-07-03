@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoolGuard Monitor</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+    --green: #22c55e; --red: #ef4444; --gray: #64748b; --blue: #38bdf8;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 24px 16px; gap: 20px;
+  }
+  h1 { font-size: 1.4rem; font-weight: 600; }
+  .card {
+    background: var(--card); border-radius: 16px; padding: 24px;
+    width: 100%; max-width: 420px;
+  }
+  #statusCard { text-align: center; }
+  #light {
+    width: 90px; height: 90px; border-radius: 50%; margin: 8px auto 16px;
+    background: var(--gray); transition: background .3s, box-shadow .3s;
+  }
+  #light.armed  { background: var(--green); box-shadow: 0 0 40px rgba(34,197,94,.45); }
+  #light.alert  { background: var(--red);   box-shadow: 0 0 50px rgba(239,68,68,.65); animation: blink 1s infinite; }
+  #light.offline{ background: var(--gray);  opacity: .4; }
+  @keyframes blink { 50% { opacity: .35; } }
+  #stateText { font-size: 1.25rem; font-weight: 700; letter-spacing: .5px; }
+  #subText   { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .buttons { display: flex; gap: 12px; margin-top: 20px; }
+  button {
+    flex: 1; padding: 14px; border: 0; border-radius: 12px;
+    font-size: 1rem; font-weight: 600; cursor: pointer; color: #fff;
+    transition: transform .1s, opacity .2s;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .35; cursor: default; }
+  #armBtn    { background: var(--green); }
+  #disarmBtn { background: var(--red); }
+  h2 { font-size: .95rem; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
+  #events { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  #events li {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: .9rem; border-left: 3px solid var(--gray); padding-left: 10px;
+  }
+  #events li.alert     { border-color: var(--red); }
+  #events li.alert_end { border-color: var(--blue); }
+  #events li.arm       { border-color: var(--green); }
+  #events li .ts { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+  #events li.empty { border: 0; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>🏊 PoolGuard Monitor</h1>
+
+  <div class="card" id="statusCard">
+    <div id="light"></div>
+    <div id="stateText">Connexion…</div>
+    <div id="subText"></div>
+    <div class="buttons">
+      <button id="armBtn">🔒 Armer</button>
+      <button id="disarmBtn">🔓 Désarmer</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Derniers événements</h2>
+    <ul id="events"><li class="empty">Chargement…</li></ul>
+  </div>
+
+<script>
+const EMOJI = { alert: "🚨", alert_end: "✅", arm: "🔒", disarm: "🔓" };
+const light = document.getElementById("light");
+const stateText = document.getElementById("stateText");
+const subText = document.getElementById("subText");
+const armBtn = document.getElementById("armBtn");
+const disarmBtn = document.getElementById("disarmBtn");
+
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    if (!s.online) {
+      light.className = "offline";
+      stateText.textContent = "PIPELINE HORS LIGNE";
+      subText.textContent = "Le service de surveillance ne répond pas";
+      armBtn.disabled = disarmBtn.disabled = true;
+      return;
+    }
+    armBtn.disabled = s.armed === true;
+    disarmBtn.disabled = s.armed === false;
+    if (s.alert) {
+      light.className = "alert";
+      stateText.textContent = "🚨 ALERTE PISCINE";
+      subText.textContent = "Présence détectée — enregistrement en cours";
+    } else if (s.armed) {
+      light.className = "armed";
+      stateText.textContent = "SYSTÈME ARMÉ";
+      subText.textContent = "Piscine sous surveillance";
+    } else {
+      light.className = "";
+      stateText.textContent = "SYSTÈME DÉSARMÉ";
+      subText.textContent = "Aucune alerte ne sera déclenchée";
+    }
+  } catch {
+    light.className = "offline";
+    stateText.textContent = "API INJOIGNABLE";
+    subText.textContent = "";
+  }
+}
+
+async function refreshEvents() {
+  try {
+    const events = await (await fetch("/api/events")).json();
+    const ul = document.getElementById("events");
+    if (!events.length) {
+      ul.innerHTML = '<li class="empty">Aucun événement pour le moment</li>';
+      return;
+    }
+    ul.innerHTML = events.map(e => {
+      const d = new Date(e.ts * 1000);
+      const ts = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
+               + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      return `<li class="${e.kind}"><span class="ts">${ts}</span>` +
+             `<span>${EMOJI[e.kind] || ""} ${e.message}</span></li>`;
+    }).join("");
+  } catch { /* silencieux : retente au prochain cycle */ }
+}
+
+armBtn.onclick = () => fetch("/api/arm", { method: "POST" }).then(refreshStatus);
+disarmBtn.onclick = () => fetch("/api/disarm", { method: "POST" }).then(refreshStatus);
+
+refreshStatus(); refreshEvents();
+setInterval(refreshStatus, 2000);
+setInterval(refreshEvents, 5000);
+</script>
+</body>
+</html>

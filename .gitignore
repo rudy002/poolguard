@@ -14,6 +14,13 @@ camera_config.py
 # Instructions Claude Code (notes de travail perso)
 CLAUDE.md
 
+# Etat partage pipeline <-> API monitoring (donnees d'execution)
+status.json
+status.json.tmp
+events.log
+events.log.tmp
+*.flag
+
 # Fichiers système
 .DS_Store
 *.log

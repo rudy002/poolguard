@@ -20,7 +20,8 @@ Home pool alarms are either intrusive (physical barriers) or dumb (water-surface
 - 🧠 **PeopleNet** (NVIDIA TAO) quantized to **INT8**, running on the Jetson's GPU via TensorRT
 - 📱 **Telegram bot** for alerts and remote control (`/arm`, `/disarm`, `/status`)
 - 🎥 **Automatic incident recording** (stream copy, zero re-encoding cost)
-- 🔁 **Self-healing**: runs as a hardened systemd service — survives crashes, camera outages and reboots
+- 📊 **Web monitoring dashboard** — FastAPI REST backend + live status page (arm/disarm buttons, alert history), reachable from any device on the LAN
+- 🔁 **Self-healing**: runs as hardened systemd services — survives crashes, camera outages and reboots
 
 ## How it works
 
@@ -34,6 +35,8 @@ flowchart LR
     ROI -. per-frame metadata .-> LOGIC[Alarm state machine<br/>Python]
     LOGIC --> TG[Telegram<br/>alerts + commands]
     LOGIC --> REC[ffmpeg incident<br/>recorder MKV]
+    LOGIC <-. status.json / events.log<br/>arm & disarm flags .-> API[FastAPI monitor<br/>REST + web UI]
+    API --> BROWSER[Any browser<br/>on the LAN]
 ```
 
 **Two-level design** — the guiding architecture decision:
@@ -58,6 +61,7 @@ Things that don't show on a screenshot but made the project real:
 - **Non-blocking notifications.** Telegram calls run in daemon threads: a slow network can never freeze the video pipeline (the alert callback runs *inside* the GStreamer streaming thread).
 - **Crash-proof recordings.** MKV over MP4, `ffmpeg -c copy` on a second RTSP connection: zero encoding load, and files stay playable even after a hard kill (no MP4 moov-atom corruption). Per-file duration cap protects the disk.
 - **Graceful lifecycle.** SIGTERM handling flushes the recorder and tears the pipeline down cleanly, so `systemctl stop/restart` never corrupts an incident file.
+- **Decoupled monitoring.** The FastAPI monitor and the video pipeline never talk directly — they share state through atomically-written files (`status.json`, `events.log`, command flags). Either process can crash, restart or be upgraded without affecting the other; the dashboard detects a dead pipeline through a heartbeat staleness check.
 - **Security hygiene.** Credentials live in gitignored config modules (nothing in `ps aux`, nothing in the repo), Telegram commands are sender-authenticated, and the git history was scrubbed with `git filter-repo` after an early credential leak — mistakes happen; cleaning them up properly is part of the job.
 - **Real-world debugging.** Favorite war story: FPS mysteriously stuck at 7 instead of 25 with CPU/GPU/network all healthy. Root cause? The desktop's **screen auto-sleep** was throttling the display sink. One `gsettings` line after hours of profiling.
 
@@ -72,17 +76,22 @@ Things that don't show on a screenshot but made the project real:
 | Zone analytics | `nvdsanalytics` ROI polygon |
 | Notifications | Telegram Bot API (long-polling, threaded sends) |
 | Recording | ffmpeg stream copy → MKV |
-| Ops | systemd service (auto-start, auto-restart), journald logging |
+| Monitoring | FastAPI + uvicorn (REST API), vanilla JS live dashboard |
+| Ops | systemd services (auto-start, auto-restart), journald logging |
 
 ## Repo structure
 
 ```
-poolguard_alert.py     # main pipeline + alarm state machine
-notifications.py       # Telegram: threaded alerts, authenticated commands
-recorder.py            # incident recorder (capped duration, auto-restart)
-poolguard.service      # systemd unit (24/7 operation)
-configs/               # inference, tracker and ROI-polygon configs
-common/                # GStreamer helpers (from NVIDIA samples)
+poolguard_alert.py         # main pipeline + alarm state machine
+notifications.py           # Telegram: threaded alerts, authenticated commands
+recorder.py                # incident recorder (capped duration, auto-restart)
+monitor_state.py           # pipeline-side state sharing (atomic writes, event log)
+monitor_api.py             # FastAPI REST backend for the web dashboard
+monitor.html               # live dashboard (status light, controls, event feed)
+poolguard.service          # systemd unit: surveillance pipeline
+poolguard-monitor.service  # systemd unit: monitoring API
+configs/                   # inference, tracker and ROI-polygon configs
+common/                    # GStreamer helpers (from NVIDIA samples)
 ```
 
 Credentials (`camera_config.py`, `telegram_config.py`) and recordings are gitignored by design.
@@ -99,10 +108,12 @@ Credentials (`camera_config.py`, `telegram_config.py`) and recordings are gitign
 # Manual run (verbose debug mode)
 DEBUG_LOGS=1 python3 poolguard_alert.py
 
-# Production: install as a service
-sudo cp poolguard.service /etc/systemd/system/
-sudo systemctl enable --now poolguard
+# Production: install as services (pipeline + monitoring API)
+sudo cp poolguard.service poolguard-monitor.service /etc/systemd/system/
+sudo systemctl enable --now poolguard poolguard-monitor
 journalctl -u poolguard -f
+
+# Web dashboard: http://<jetson-ip>:8000 (LAN only)
 ```
 
 ## Possible extensions

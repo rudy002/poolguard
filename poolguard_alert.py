@@ -35,6 +35,7 @@ from common.FPS import PERF_DATA
 import os
 from notifications import send_telegram_alert, get_telegram_command
 from recorder import start_recording, stop_recording
+from monitor_state import write_status, log_event
 
 
 
@@ -50,6 +51,7 @@ ALERT_AFTER_SECONDS = 3       # 3 sec de presence en mode arme -> alerte
 GRACE_PERIOD_SECONDS = 1.5   # tolerance aux coupures de detection (tracking qui clignote)
 ALERT_END_AFTER_EMPTY_SECONDS = 30   # piscine vide 30s pendant une alerte -> fin d'alerte + arret enregistrement
 DISARM_FLAG_FILE = "disarm.flag"
+ARM_FLAG_FILE = "arm.flag"
 # Logs detailles par frame (numeros, comptages...) : utile en debug, trop bruyant en service
 # (journal systemd sur microSD). Activer avec : DEBUG_LOGS=1 python3 poolguard_alert.py ...
 DEBUG_LOGS = os.environ.get("DEBUG_LOGS", "0") == "1"
@@ -92,8 +94,18 @@ def check_pool_alarm(objInROIcnt):
         last_person_in_pool_time = now
         print(">>> SYSTEME DESARME <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme")
+        log_event("disarm", "Systeme desarme (monitoring/flag)")
         display_warning_text = None
         stop_recording()
+
+    # Armement manuel via l'API de monitoring (pendant du disarm.flag)
+    if os.path.exists(ARM_FLAG_FILE):
+        os.remove(ARM_FLAG_FILE)
+        if not ARMED:
+            ARMED = True
+            print(">>> SYSTEME ARME (monitoring) <<<")
+            send_telegram_alert("🔒 PoolGuard: systeme arme (monitoring)")
+            log_event("arm", "Systeme arme (monitoring/flag)")
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -105,6 +117,7 @@ def check_pool_alarm(objInROIcnt):
             alert_active = True
             print(">>> ALERTE: presence detectee dans la piscine <<<")
             send_telegram_alert("🚨 PoolGuard: presence detectee dans la piscine !")
+            log_event("alert", "Presence detectee dans la piscine")
             display_warning_text = "⚠️ WARNING - POOL"
             start_recording()
     else:
@@ -118,11 +131,13 @@ def check_pool_alarm(objInROIcnt):
             display_warning_text = None
             print(">>> FIN D'ALERTE: piscine vide, enregistrement sauvegarde <<<")
             send_telegram_alert("✅ PoolGuard: piscine vide, fin d'alerte (enregistrement sauvegarde)")
+            log_event("alert_end", "Piscine vide, fin d'alerte")
             stop_recording()
         if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
             ARMED = True
             print(">>> SYSTEME ARME (30 min sans presence) <<<")
             send_telegram_alert("🔒 PoolGuard: systeme arme, piscine surveillee")
+            log_event("arm", "Armement automatique (piscine vide 30 min)")
 
 def check_telegram_commands():
     """Verifie et traite les commandes Telegram (/arm, /disarm, /status). Appelee toutes les 3s."""
@@ -136,6 +151,7 @@ def check_telegram_commands():
         ARMED = True
         print(">>> SYSTEME ARME (commande manuelle) <<<")
         send_telegram_alert("🔒 PoolGuard: systeme arme manuellement")
+        log_event("arm", "Armement manuel (Telegram)")
     elif command == "/disarm":
         ARMED = False
         alert_active = False
@@ -145,12 +161,20 @@ def check_telegram_commands():
         last_person_in_pool_time = time.time()
         print(">>> SYSTEME DESARME (commande manuelle) <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme manuellement")
+        log_event("disarm", "Desarmement manuel (Telegram)")
         stop_recording()
     elif command == "/status":
         etat = "🔒 Arme" if ARMED else "🔓 Desarme"
         send_telegram_alert(f"Statut PoolGuard: {etat}")
 
     return True  # continue d'etre appelee
+
+
+def update_status_file():
+    """Ecrit l'etat courant dans status.json toutes les 2s (battement de coeur
+    pour l'API de monitoring : un fichier qui date de plus de ~10s = pipeline mort)."""
+    write_status(ARMED, alert_active)
+    return True  # continue d'etre appelee (requis par GLib.timeout_add)
 
 
 # nvanlytics_src_pad_buffer_probe  will extract metadata received on nvtiler sink pad
@@ -549,6 +573,7 @@ def main(args):
         # perf callback function to print fps every 5 sec
         GLib.timeout_add(5000, perf_data.perf_print_callback)
         GLib.timeout_add(3000, check_telegram_commands)
+        GLib.timeout_add(2000, update_status_file)
 
 
     # List the sources
