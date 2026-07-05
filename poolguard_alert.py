@@ -33,7 +33,7 @@ from common.platform_info import PlatformInfo
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
 import os
-from notifications import send_telegram_alert, get_telegram_command
+from notifications import send_telegram_alert
 from recorder import start_recording, stop_recording
 from monitor_state import write_status, log_event
 
@@ -94,7 +94,7 @@ def check_pool_alarm(objInROIcnt):
         last_person_in_pool_time = now
         print(">>> SYSTEME DESARME <<<")
         send_telegram_alert("🔓 PoolGuard: systeme desarme")
-        log_event("disarm", "Systeme desarme (monitoring/flag)")
+        log_event("disarm", "Systeme desarme (manuel)")
         display_warning_text = None
         stop_recording()
 
@@ -103,9 +103,9 @@ def check_pool_alarm(objInROIcnt):
         os.remove(ARM_FLAG_FILE)
         if not ARMED:
             ARMED = True
-            print(">>> SYSTEME ARME (monitoring) <<<")
-            send_telegram_alert("🔒 PoolGuard: systeme arme (monitoring)")
-            log_event("arm", "Systeme arme (monitoring/flag)")
+            print(">>> SYSTEME ARME (manuel) <<<")
+            send_telegram_alert("🔒 PoolGuard: systeme arme")
+            log_event("arm", "Systeme arme (manuel)")
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -139,35 +139,10 @@ def check_pool_alarm(objInROIcnt):
             send_telegram_alert("🔒 PoolGuard: systeme arme, piscine surveillee")
             log_event("arm", "Armement automatique (piscine vide 30 min)")
 
-def check_telegram_commands():
-    """Verifie et traite les commandes Telegram (/arm, /disarm, /status). Appelee toutes les 3s."""
-    global ARMED, alert_active, pool_entry_time, display_warning_text, last_person_in_pool_time
-
-    command = get_telegram_command()
-    if command is None:
-        return True  # continue d'etre appelee (requis par GLib.timeout_add)
-
-    if command == "/arm":
-        ARMED = True
-        print(">>> SYSTEME ARME (commande manuelle) <<<")
-        send_telegram_alert("🔒 PoolGuard: systeme arme manuellement")
-        log_event("arm", "Armement manuel (Telegram)")
-    elif command == "/disarm":
-        ARMED = False
-        alert_active = False
-        pool_entry_time = None
-        display_warning_text = None
-        # Remet l'horloge a zero : sans ca, le systeme peut se re-armer a la frame suivante
-        last_person_in_pool_time = time.time()
-        print(">>> SYSTEME DESARME (commande manuelle) <<<")
-        send_telegram_alert("🔓 PoolGuard: systeme desarme manuellement")
-        log_event("disarm", "Desarmement manuel (Telegram)")
-        stop_recording()
-    elif command == "/status":
-        etat = "🔒 Arme" if ARMED else "🔓 Desarme"
-        send_telegram_alert(f"Statut PoolGuard: {etat}")
-
-    return True  # continue d'etre appelee
+# NOTE: l'ecoute des commandes Telegram (/arm, /disarm, /status, /on, /off) vit
+# desormais dans monitor_api.py (service poolguard-monitor) : elle doit fonctionner
+# meme quand ce pipeline est eteint. Ici on ne fait qu'ENVOYER des notifications ;
+# les commandes arrivent via arm.flag / disarm.flag, ramasses par check_pool_alarm.
 
 
 def update_status_file():
@@ -464,18 +439,29 @@ def main(args):
     nvosd.set_property('process-mode',OSD_PROCESS_MODE)
     nvosd.set_property('display-text',OSD_DISPLAY_TEXT)
 
-    if platform_info.is_integrated_gpu():
+    # Affichage ecran seulement si un serveur X est joignable (ecran branche, session
+    # graphique ouverte). Sinon : fakesink = mode headless, la video est analysee puis
+    # jetee apres le dessin. HEADLESS=1 force ce mode meme avec un ecran.
+    display_available = False
+    if os.environ.get("HEADLESS", "0") != "1" and os.environ.get("DISPLAY"):
+        import subprocess
+        display_available = subprocess.run(
+            ["xset", "q"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode == 0
+
+    if not display_available:
+        print("Pas d'ecran disponible : mode headless (fakesink)")
+        sink = Gst.ElementFactory.make("fakesink", "fake-sink")
+        if not sink:
+            sys.stderr.write(" Unable to create fakesink \n")
+    elif platform_info.is_integrated_gpu() or platform_info.is_platform_aarch64():
         print("Creating nv3dsink \n")
         sink = Gst.ElementFactory.make("nv3dsink", "nv3d-sink")
         if not sink:
             sys.stderr.write(" Unable to create nv3dsink \n")
     else:
-        if platform_info.is_platform_aarch64():
-            print("Creating nv3dsink \n")
-            sink = Gst.ElementFactory.make("nv3dsink", "nv3d-sink")
-        else:
-            print("Creating EGLSink \n")
-            sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
+        print("Creating EGLSink \n")
+        sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
         if not sink:
             sys.stderr.write(" Unable to create egl sink \n")
 
@@ -572,7 +558,6 @@ def main(args):
         nvanalytics_src_pad.add_probe(Gst.PadProbeType.BUFFER, nvanalytics_src_pad_buffer_probe, 0)
         # perf callback function to print fps every 5 sec
         GLib.timeout_add(5000, perf_data.perf_print_callback)
-        GLib.timeout_add(3000, check_telegram_commands)
         GLib.timeout_add(2000, update_status_file)
 
 
