@@ -92,9 +92,9 @@ def check_pool_alarm(objInROIcnt):
         pool_entry_time = None
         # Remet l'horloge a zero : sans ca, le systeme peut se re-armer a la frame suivante
         last_person_in_pool_time = now
-        print(">>> SYSTEME DESARME <<<")
-        send_telegram_alert("🔓 PoolGuard: systeme desarme")
-        log_event("disarm", "Systeme desarme (manuel)")
+        print(">>> SYSTEM DISARMED <<<")
+        send_telegram_alert("🔓 PoolGuard: system disarmed")
+        log_event("disarm", "System disarmed (manual)")
         display_warning_text = None
         stop_recording()
 
@@ -103,9 +103,9 @@ def check_pool_alarm(objInROIcnt):
         os.remove(ARM_FLAG_FILE)
         if not ARMED:
             ARMED = True
-            print(">>> SYSTEME ARME (manuel) <<<")
-            send_telegram_alert("🔒 PoolGuard: systeme arme")
-            log_event("arm", "Systeme arme (manuel)")
+            print(">>> SYSTEM ARMED (manual) <<<")
+            send_telegram_alert("🔒 PoolGuard: system armed")
+            log_event("arm", "System armed (manual)")
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
 
@@ -115,9 +115,9 @@ def check_pool_alarm(objInROIcnt):
             pool_entry_time = now
         if ARMED and not alert_active and (now - pool_entry_time) >= ALERT_AFTER_SECONDS:
             alert_active = True
-            print(">>> ALERTE: presence detectee dans la piscine <<<")
-            send_telegram_alert("🚨 PoolGuard: presence detectee dans la piscine !")
-            log_event("alert", "Presence detectee dans la piscine")
+            print(">>> ALERT: person detected in the pool <<<")
+            send_telegram_alert("🚨 PoolGuard: person detected in the pool!")
+            log_event("alert", "Person detected in the pool")
             display_warning_text = "⚠️ WARNING - POOL"
             start_recording()
     else:
@@ -129,15 +129,15 @@ def check_pool_alarm(objInROIcnt):
         if alert_active and (now - last_person_in_pool_time) >= ALERT_END_AFTER_EMPTY_SECONDS:
             alert_active = False
             display_warning_text = None
-            print(">>> FIN D'ALERTE: piscine vide, enregistrement sauvegarde <<<")
-            send_telegram_alert("✅ PoolGuard: piscine vide, fin d'alerte (enregistrement sauvegarde)")
-            log_event("alert_end", "Piscine vide, fin d'alerte")
+            print(">>> ALERT ENDED: pool empty, recording saved <<<")
+            send_telegram_alert("✅ PoolGuard: pool empty, alert ended (recording saved)")
+            log_event("alert_end", "Pool empty, alert ended")
             stop_recording()
         if not ARMED and (now - last_person_in_pool_time) >= ARM_AFTER_SECONDS:
             ARMED = True
-            print(">>> SYSTEME ARME (30 min sans presence) <<<")
-            send_telegram_alert("🔒 PoolGuard: systeme arme, piscine surveillee")
-            log_event("arm", "Armement automatique (piscine vide 30 min)")
+            print(">>> SYSTEM ARMED (30 min without presence) <<<")
+            send_telegram_alert("🔒 PoolGuard: system armed, pool under surveillance")
+            log_event("arm", "Auto-armed (pool empty for 30 min)")
 
 # NOTE: l'ecoute des commandes Telegram (/arm, /disarm, /status, /on, /off) vit
 # desormais dans monitor_api.py (service poolguard-monitor) : elle doit fonctionner

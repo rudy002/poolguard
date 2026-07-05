@@ -121,32 +121,32 @@ def index():
 def _handle_telegram_command(command):
     if command == "/arm":
         if not pipeline_service_running():
-            send_telegram_alert("⚠️ PoolGuard est eteint : envoie /on d'abord")
+            send_telegram_alert("⚠️ PoolGuard is powered off: send /on first")
             return
         ARM_FLAG.touch()  # le pipeline confirme lui-meme une fois le flag ramasse
     elif command == "/disarm":
         if not pipeline_service_running():
-            send_telegram_alert("⚠️ PoolGuard est eteint (donc deja sans surveillance)")
+            send_telegram_alert("⚠️ PoolGuard is already off (no surveillance running)")
             return
         DISARM_FLAG.touch()
     elif command == "/on":
-        send_telegram_alert("⏻ PoolGuard: demarrage du systeme...")
+        send_telegram_alert("⏻ PoolGuard: starting up...")
         set_pipeline_power(True)
     elif command == "/off":
         ok = set_pipeline_power(False)
-        send_telegram_alert("⛔ PoolGuard: systeme eteint (plus de surveillance ni d'enregistrement). /on pour rallumer" if ok else "❌ Echec de l'arret")
+        send_telegram_alert("⛔ PoolGuard: system powered off (no surveillance, no recording). Send /on to restart" if ok else "❌ Failed to power off")
     elif command == "/status":
         if not pipeline_service_running():
-            send_telegram_alert("Statut PoolGuard: ⛔ eteint (/on pour rallumer)")
+            send_telegram_alert("PoolGuard status: ⛔ powered off (send /on to start)")
             return
         status = read_status()
         stale = status is None or (time.time() - status.get("updated_at", 0)) >= PIPELINE_STALE_SECONDS
         if stale:
-            send_telegram_alert("Statut PoolGuard: ⏳ demarrage en cours...")
+            send_telegram_alert("PoolGuard status: ⏳ starting up...")
         elif status.get("alert"):
-            send_telegram_alert("Statut PoolGuard: 🚨 ALERTE en cours !")
+            send_telegram_alert("PoolGuard status: 🚨 ALERT in progress!")
         else:
-            send_telegram_alert(f"Statut PoolGuard: {'🔒 Arme' if status.get('armed') else '🔓 Desarme'}")
+            send_telegram_alert(f"PoolGuard status: {'🔒 Armed' if status.get('armed') else '🔓 Disarmed'}")
 
 
 def _telegram_loop():
