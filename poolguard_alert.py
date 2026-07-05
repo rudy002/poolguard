@@ -107,7 +107,7 @@ def check_pool_alarm(objInROIcnt):
             send_telegram_alert("🔒 PoolGuard: system armed")
             log_event("arm", "System armed (manual)")
 
-    person_in_pool = bool(objInROIcnt) and objInROIcnt.get('PISCINE', 0) > 0
+    person_in_pool = bool(objInROIcnt) and objInROIcnt.get('POOL', 0) > 0
 
     if person_in_pool:
         last_person_in_pool_time = now
