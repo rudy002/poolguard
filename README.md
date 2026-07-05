@@ -20,7 +20,9 @@ Home pool alarms are either intrusive (physical barriers) or dumb (water-surface
 - 🧠 **PeopleNet** (NVIDIA TAO) quantized to **INT8**, running on the Jetson's GPU via TensorRT
 - 📱 **Telegram bot** for alerts and remote control (`/arm`, `/disarm`, `/status`)
 - 🎥 **Automatic incident recording** (stream copy, zero re-encoding cost)
-- 📊 **Web monitoring dashboard** — FastAPI REST backend + live status page (arm/disarm buttons, alert history), reachable from any device on the LAN
+- 📊 **Web monitoring dashboard** — FastAPI REST backend + live status page (arm/disarm, full system on/off, alert history), reachable from any device on the LAN
+- 🔌 **Remote power control** — `/on` and `/off` from Telegram or the dashboard start/stop the whole pipeline through systemd (scoped passwordless sudo rule); the always-on control plane survives to turn it back on
+- 🖥️ **Headless-ready** — auto-detects whether a display is attached and falls back to a sink-less pipeline; unplug the monitor, everything keeps running
 - 🔁 **Self-healing**: runs as hardened systemd services — survives crashes, camera outages and reboots
 
 ## How it works
@@ -61,7 +63,7 @@ Things that don't show on a screenshot but made the project real:
 - **Non-blocking notifications.** Telegram calls run in daemon threads: a slow network can never freeze the video pipeline (the alert callback runs *inside* the GStreamer streaming thread).
 - **Crash-proof recordings.** MKV over MP4, `ffmpeg -c copy` on a second RTSP connection: zero encoding load, and files stay playable even after a hard kill (no MP4 moov-atom corruption). Per-file duration cap protects the disk.
 - **Graceful lifecycle.** SIGTERM handling flushes the recorder and tears the pipeline down cleanly, so `systemctl stop/restart` never corrupts an incident file.
-- **Decoupled monitoring.** The FastAPI monitor and the video pipeline never talk directly — they share state through atomically-written files (`status.json`, `events.log`, command flags). Either process can crash, restart or be upgraded without affecting the other; the dashboard detects a dead pipeline through a heartbeat staleness check.
+- **Control plane vs data plane.** The FastAPI monitor and the video pipeline never talk directly — they share state through atomically-written files (`status.json`, `events.log`, command flags). Either process can crash, restart or be upgraded without affecting the other; the dashboard detects a dead pipeline through a heartbeat staleness check. Telegram command listening lives in the always-on control plane (a stopped pipeline can't hear `/on` — and Telegram's API allows only one `getUpdates` consumer per bot anyway).
 - **Security hygiene.** Credentials live in gitignored config modules (nothing in `ps aux`, nothing in the repo), Telegram commands are sender-authenticated, and the git history was scrubbed with `git filter-repo` after an early credential leak — mistakes happen; cleaning them up properly is part of the job.
 - **Real-world debugging.** Favorite war story: FPS mysteriously stuck at 7 instead of 25 with CPU/GPU/network all healthy. Root cause? The desktop's **screen auto-sleep** was throttling the display sink. One `gsettings` line after hours of profiling.
 
