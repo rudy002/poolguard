@@ -29,7 +29,14 @@
   #light.armed  { background: var(--green); box-shadow: 0 0 40px rgba(34,197,94,.45); }
   #light.alert  { background: var(--red);   box-shadow: 0 0 50px rgba(239,68,68,.65); animation: blink 1s infinite; }
   #light.offline{ background: var(--gray);  opacity: .4; }
+  #light.loading {
+    background: transparent;
+    border: 7px solid var(--gray);
+    border-top-color: var(--blue);
+    animation: spin 1s linear infinite;
+  }
   @keyframes blink { 50% { opacity: .35; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   #stateText { font-size: 1.25rem; font-weight: 700; letter-spacing: .5px; }
   #subText   { color: var(--muted); font-size: .85rem; margin-top: 4px; }
   .buttons { display: flex; gap: 12px; margin-top: 20px; }
@@ -42,6 +49,8 @@
   button:disabled { opacity: .35; cursor: default; }
   #armBtn    { background: var(--green); }
   #disarmBtn { background: var(--red); }
+  #powerBtn  { background: var(--gray); margin-top: 12px; width: 100%; }
+  #powerBtn.on { background: var(--blue); }
   h2 { font-size: .95rem; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
   #events { list-style: none; display: flex; flex-direction: column; gap: 10px; }
   #events li {
@@ -66,6 +75,7 @@
       <button id="armBtn">🔒 Armer</button>
       <button id="disarmBtn">🔓 Désarmer</button>
     </div>
+    <button id="powerBtn">⏻ …</button>
   </div>
 
   <div class="card">
@@ -80,14 +90,55 @@ const stateText = document.getElementById("stateText");
 const subText = document.getElementById("subText");
 const armBtn = document.getElementById("armBtn");
 const disarmBtn = document.getElementById("disarmBtn");
+const powerBtn = document.getElementById("powerBtn");
+let systemOn = null;   // etat courant, pilote le comportement du bouton ⏻
+let pending = null;    // action en cours: {action: 'on'|'off'|'arm'|'disarm', since: ms}
+const PENDING_LABELS = {
+  on:     ["Démarrage du système…", "Lancement du pipeline vidéo, quelques secondes"],
+  off:    ["Arrêt du système…", "Fermeture propre de la surveillance"],
+  arm:    ["Armement…", "Transmission au système"],
+  disarm: ["Désarmement…", "Transmission au système"],
+};
+
+function showPending() {
+  light.className = "loading";
+  stateText.textContent = "⏳ " + PENDING_LABELS[pending.action][0];
+  subText.textContent = PENDING_LABELS[pending.action][1];
+  armBtn.disabled = disarmBtn.disabled = powerBtn.disabled = true;
+}
 
 async function refreshStatus() {
   try {
     const s = await (await fetch("/api/status")).json();
-    if (!s.online) {
+    systemOn = s.service_running;
+
+    // L'action en cours est-elle terminee ?
+    if (pending) {
+      const done =
+        (pending.action === "on"     && s.online) ||
+        (pending.action === "off"    && !s.service_running) ||
+        (pending.action === "arm"    && s.armed === true) ||
+        (pending.action === "disarm" && s.armed === false);
+      if (done || Date.now() - pending.since > 60000) pending = null;  // 60s = garde-fou
+      else { showPending(); return; }
+    }
+
+    powerBtn.disabled = false;
+    if (!s.service_running) {
       light.className = "offline";
-      stateText.textContent = "PIPELINE HORS LIGNE";
-      subText.textContent = "Le service de surveillance ne répond pas";
+      stateText.textContent = "⛔ SYSTÈME ÉTEINT";
+      subText.textContent = "Aucune surveillance, aucun enregistrement";
+      armBtn.disabled = disarmBtn.disabled = true;
+      powerBtn.textContent = "⏻ Allumer le système";
+      powerBtn.className = "on";
+      return;
+    }
+    powerBtn.textContent = "⏻ Éteindre le système";
+    powerBtn.className = "";
+    if (!s.online) {
+      light.className = "loading";
+      stateText.textContent = "⏳ DÉMARRAGE…";
+      subText.textContent = "Le pipeline vidéo se lance (quelques secondes)";
       armBtn.disabled = disarmBtn.disabled = true;
       return;
     }
@@ -131,8 +182,17 @@ async function refreshEvents() {
   } catch { /* silencieux : retente au prochain cycle */ }
 }
 
-armBtn.onclick = () => fetch("/api/arm", { method: "POST" }).then(refreshStatus);
-disarmBtn.onclick = () => fetch("/api/disarm", { method: "POST" }).then(refreshStatus);
+function doAction(action, url) {
+  pending = { action, since: Date.now() };
+  showPending();
+  fetch(url, { method: "POST" }).then(refreshStatus);
+}
+armBtn.onclick = () => doAction("arm", "/api/arm");
+disarmBtn.onclick = () => doAction("disarm", "/api/disarm");
+powerBtn.onclick = () => {
+  if (systemOn && !confirm("Éteindre PoolGuard ?\nPlus aucune surveillance ni enregistrement jusqu'au rallumage.")) return;
+  doAction(systemOn ? "off" : "on", systemOn ? "/api/power/off" : "/api/power/on");
+};
 
 refreshStatus(); refreshEvents();
 setInterval(refreshStatus, 2000);
