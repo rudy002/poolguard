@@ -34,10 +34,11 @@ flowchart LR
     INF --> TRK[NvDCF<br/>multi-object tracking]
     TRK --> ROI[nvdsanalytics<br/>pool polygon ROI]
     ROI --> OSD[On-screen display<br/>boxes + alert banner]
-    ROI -. per-frame metadata .-> LOGIC[Alarm state machine<br/>Python]
+    ROI -. "per-frame metadata" .-> LOGIC[Alarm state machine<br/>Python]
     LOGIC --> TG[Telegram<br/>alerts + commands]
     LOGIC --> REC[ffmpeg incident<br/>recorder MKV]
-    LOGIC <-. status.json / events.log<br/>arm & disarm flags .-> API[FastAPI monitor<br/>REST + web UI]
+    LOGIC -. "status.json / events.log" .-> API[FastAPI monitor<br/>REST + web UI]
+    API -. "arm / disarm / power flags" .-> LOGIC
     API --> BROWSER[Any browser<br/>on the LAN]
 ```
 
