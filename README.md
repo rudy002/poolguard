@@ -1,3 +1,7 @@
+
+
+
+
 # PoolGuard 🏊 — AI Pool Surveillance on the Edge
 
 **Real-time drowning-risk prevention system** running 24/7 on an NVIDIA Jetson Orin Nano. It watches a swimming pool through an IP camera, detects people entering a danger zone with a GPU-accelerated neural network, and reacts in seconds: Telegram alert, on-screen warning, automatic video recording of the incident.
@@ -8,7 +12,7 @@
 ![Platform](https://img.shields.io/badge/Jetson-Orin%20Nano%208GB-76B900?logo=nvidia&logoColor=white)
 ![Status](https://img.shields.io/badge/status-in%20production%2024%2F7-success)
 
-> 🎬 **Demo video coming soon** — live detection, alert flow and incident replay.
+<img width="640" height="360" alt="demo_poolguard" src="https://github.com/user-attachments/assets/86fea24b-8488-42ba-b42a-86743b6437ba" />
 
 ---
 
