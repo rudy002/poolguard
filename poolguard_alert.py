@@ -459,6 +459,14 @@ def main(args):
         sink = Gst.ElementFactory.make("nv3dsink", "nv3d-sink")
         if not sink:
             sys.stderr.write(" Unable to create nv3dsink \n")
+        else:
+            # Fenetre fixee a la resolution native du tiler (coin haut-gauche) au lieu
+            # du plein ecran : evite un agrandissement GPU inutile et rend la capture
+            # d'ecran (demo/screen recording) fiable a taille fixe et connue.
+            sink.set_property('window-x', 0)
+            sink.set_property('window-y', 0)
+            sink.set_property('window-width', TILED_OUTPUT_WIDTH)
+            sink.set_property('window-height', TILED_OUTPUT_HEIGHT)
     else:
         print("Creating EGLSink \n")
         sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")

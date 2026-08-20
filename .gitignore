@@ -13,6 +13,7 @@ camera_config.py
 
 # Instructions Claude Code (notes de travail perso)
 CLAUDE.md
+CLAUDE-CHANTIERS.md
 
 # Etat partage pipeline <-> API monitoring (donnees d'execution)
 status.json
@@ -32,3 +33,4 @@ telegram_config.py
 debug_screen.txt
 debug_telegram_cmd.txt
 recordings/
+demo_recordings/
