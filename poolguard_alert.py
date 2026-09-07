@@ -36,6 +36,7 @@ import os
 from notifications import send_telegram_alert
 from recorder import start_recording, stop_recording
 from monitor_state import write_status, log_event
+from terrace_alert import declencher_alerte_terrasse
 
 
 
@@ -62,6 +63,29 @@ last_person_in_pool_time = time.time()
 pool_entry_time = None
 display_warning_text = None
 
+# --- Pre-alerte terrasse (zone TERRACE) ---
+# But : prevenir AVANT que quelqu'un entre dans l'eau. Envoie une photo de la scene
+# avec une estimation d'age (voir age_check.py). N'enregistre PAS de video : c'est
+# le role de l'alerte piscine.
+TERRACE_ALERT_AFTER_SECONDS = 3     # presence continue avant de prevenir
+TERRACE_COOLDOWN_SECONDS = 120      # plancher absolu entre 2 pre-alertes
+# UNE alerte par PASSAGE, pas toutes les N minutes.
+# Sans ca (constate en production le 2026-09-06 : 13 photos en 29 min), quelqu'un qui
+# reste sur la terrasse redeclenche une alerte a chaque expiration du minuteur.
+# La terrasse doit se vider ce temps-la avant qu'un nouveau passage puisse alerter.
+TERRACE_REARM_AFTER_EMPTY_SECONDS = 5 * 60
+
+last_person_on_terrace_time = 0.0
+terrace_entry_time = None
+last_terrace_alert_time = 0.0
+# True = on a deja prevenu pour le passage en cours ; remis a False quand la
+# terrasse est restee vide assez longtemps (nouveau passage).
+terrace_alert_done_this_visit = False
+# Plus grande boite englobante vue dans TERRACE sur la frame courante, en
+# coordonnees 1920x1080 (celles du streammux, donc directement comparables a
+# l'image capturee par ffmpeg). Remplie par la probe, lue par check_pool_alarm.
+terrace_box = None
+
 
 MAX_DISPLAY_LEN=64
 PGIE_CLASS_ID_VEHICLE = 0
@@ -77,6 +101,58 @@ GST_CAPS_FEATURES_NVMM="memory:NVMM"
 OSD_PROCESS_MODE= 0
 OSD_DISPLAY_TEXT= 1
 pgie_classes_str= ["Vehicle", "TwoWheeler", "Person","RoadSign"]
+
+def check_terrace_prealert(objInROIcnt, now):
+    """Pre-alerte : quelqu'un s'approche de la piscine (zone TERRACE).
+
+    Envoie une photo de la scene avec une estimation d'age. N'enregistre pas de video
+    et ne touche pas a l'etat de l'alarme piscine : c'est une couche EN PLUS.
+
+    Trois garde-fous, chacun pour une raison mesuree :
+    1. GRACE_PERIOD : la detection clignote aussi sur la terrasse (entrees/sorties
+       toutes les 0,1 s constatees) -> sans ca, rafale d'alertes ;
+    2. cooldown : 2 min mini entre 2 pre-alertes ;
+    3. supprimee si une alerte piscine est deja active : l'info serait redondante,
+       et ffmpeg enregistre deja -> on eviterait une 3e connexion RTSP simultanee
+       (seules 2 sont validees sur cette camera, cf. Piege #7 du CLAUDE.md).
+    """
+    global last_person_on_terrace_time, terrace_entry_time, last_terrace_alert_time
+    global terrace_alert_done_this_visit
+
+    person_on_terrace = bool(objInROIcnt) and objInROIcnt.get('TERRACE', 0) > 0
+
+    if not person_on_terrace:
+        # Meme tolerance au clignotement que pour la piscine
+        if terrace_entry_time is not None and (now - last_person_on_terrace_time) > GRACE_PERIOD_SECONDS:
+            terrace_entry_time = None
+        # Terrasse vide assez longtemps -> le prochain passage pourra alerter
+        if (terrace_alert_done_this_visit
+                and (now - last_person_on_terrace_time) >= TERRACE_REARM_AFTER_EMPTY_SECONDS):
+            terrace_alert_done_this_visit = False
+        return
+
+    last_person_on_terrace_time = now
+    if terrace_entry_time is None:
+        terrace_entry_time = now
+        return
+
+    if not ARMED or alert_active:
+        return
+    if terrace_alert_done_this_visit:      # deja prevenu pour ce passage
+        return
+    if (now - terrace_entry_time) < TERRACE_ALERT_AFTER_SECONDS:
+        return
+    if (now - last_terrace_alert_time) < TERRACE_COOLDOWN_SECONDS:
+        return
+    if terrace_box is None:
+        return
+
+    last_terrace_alert_time = now
+    terrace_alert_done_this_visit = True
+    print(">>> PRE-ALERT: person approaching the pool <<<")
+    log_event("terrace", "Person detected near the pool")
+    declencher_alerte_terrasse(list(terrace_box))
+
 
 def check_pool_alarm(objInROIcnt):
     """Applique la logique d'armement/alerte a partir du comptage ROI de la frame."""
@@ -106,6 +182,10 @@ def check_pool_alarm(objInROIcnt):
             print(">>> SYSTEM ARMED (manual) <<<")
             send_telegram_alert("🔒 PoolGuard: system armed")
             log_event("arm", "System armed (manual)")
+
+    # Pre-alerte terrasse : couche independante, evaluee avant la logique piscine.
+    # Ne modifie aucun etat de l'alarme piscine.
+    check_terrace_prealert(objInROIcnt, now)
 
     person_in_pool = bool(objInROIcnt) and objInROIcnt.get('POOL', 0) > 0
 
@@ -155,6 +235,10 @@ def update_status_file():
 # nvanlytics_src_pad_buffer_probe  will extract metadata received on nvtiler sink pad
 # and update params for drawing rectangle, object information etc.
 def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
+    global terrace_box
+    # Remis a zero a chaque buffer : la boite doit refleter la frame COURANTE,
+    # sinon on enverrait la position d'une personne deja partie.
+    terrace_box = None
     frame_number=0
     num_rects=0
     gst_buffer = info.get_buffer()
@@ -213,6 +297,13 @@ def nvanalytics_src_pad_buffer_probe(pad,info,u_data):
                             obj_meta.rect_params.border_width = 4
                         else:
                             obj_meta.rect_params.border_color.set(0.0, 1.0, 0.0, 1.0)  # vert
+                        # Pre-alerte terrasse : on retient la plus GRANDE personne de
+                        # la zone TERRACE (la plus proche, donc la plus lisible sur la
+                        # photo et la plus fiable pour l'estimation d'age).
+                        if 'TERRACE' in user_meta_data.roiStatus:
+                            r = obj_meta.rect_params
+                            if terrace_box is None or r.height > (terrace_box[3] - terrace_box[1]):
+                                terrace_box = [r.left, r.top, r.left + r.width, r.top + r.height]
                 except StopIteration:
                     break
 

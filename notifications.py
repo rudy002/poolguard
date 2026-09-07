@@ -20,6 +20,25 @@ def send_telegram_alert(message):
     threading.Thread(target=_send, args=(message,), daemon=True).start()
 
 
+def _send_photo(image_path, caption):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    try:
+        with open(image_path, "rb") as f:
+            requests.post(url,
+                          data={"chat_id": TELEGRAM_CHAT_ID, "caption": caption},
+                          files={"photo": f}, timeout=20)
+    except Exception as e:
+        print(f"[TELEGRAM] Echec envoi photo: {e}")
+        # Repli : si la photo ne passe pas, le texte seul doit quand meme arriver.
+        _send(caption)
+
+
+def send_telegram_photo(image_path, caption=""):
+    """Envoie une photo avec legende, dans un thread (jamais bloquant).
+    Timeout plus long que pour un texte : un upload d'image prend plus de temps."""
+    threading.Thread(target=_send_photo, args=(image_path, caption), daemon=True).start()
+
+
 def get_telegram_command():
     """Verifie s'il y a une nouvelle commande Telegram (/arm, /disarm, /status).
     Retourne la commande (str) ou None s'il n'y en a pas."""

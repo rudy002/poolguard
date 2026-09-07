@@ -26,7 +26,7 @@ def write_status(armed, alert_active):
 
 def log_event(kind, message):
     """Ajoute un evenement (une ligne JSON) dans events.log.
-    kind: alert / alert_end / arm / disarm"""
+    kind: alert / alert_end / arm / disarm / terrace"""
     event = {"ts": time.time(), "kind": kind, "message": message}
     try:
         with open(EVENTS_FILE, "a") as f:

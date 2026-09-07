@@ -7,6 +7,12 @@ display-font-size=12
 
 [roi-filtering-stream-0]
 enable=1
+# POOL = le plan d'eau. Declenche l'alarme (Piege : le nom est aussi lu par
+# check_pool_alarm dans poolguard_alert.py, les deux vont ensemble).
 roi-POOL=843;223;1402;400;1154;572;593;302
+# TERRACE = la terrasse autour. Declenche une PRE-alerte avec photo, pour prevenir
+# AVANT que quelqu'un entre dans l'eau. Trace le 2026-09-06, 0% de chevauchement
+# avec POOL (verifie). Les 2 zones fonctionnent bien simultanement (teste).
+roi-TERRACE=1474;375;1183;606;506;274;321;402;760;459;881;787;769;1051;1833;1046;1623;435
 inverse-roi=0
 class-id=0

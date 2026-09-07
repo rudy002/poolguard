@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
-    --green: #22c55e; --red: #ef4444; --gray: #64748b; --blue: #38bdf8;
+    --green: #22c55e; --red: #ef4444; --gray: #64748b; --blue: #38bdf8; --amber: #f59e0b;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
@@ -60,6 +60,7 @@
   #events li.alert     { border-color: var(--red); }
   #events li.alert_end { border-color: var(--blue); }
   #events li.arm       { border-color: var(--green); }
+  #events li.terrace   { border-color: var(--amber); }
   #events li .ts { color: var(--muted); font-size: .78rem; white-space: nowrap; }
   #events li.empty { border: 0; color: var(--muted); }
 </style>
@@ -84,7 +85,7 @@
   </div>
 
 <script>
-const EMOJI = { alert: "🚨", alert_end: "✅", arm: "🔒", disarm: "🔓" };
+const EMOJI = { alert: "🚨", alert_end: "✅", arm: "🔒", disarm: "🔓", terrace: "⚠️" };
 const light = document.getElementById("light");
 const stateText = document.getElementById("stateText");
 const subText = document.getElementById("subText");

@@ -1,4 +1,5 @@
 # Modèles IA (trop lourds, regénérables)
+models/
 *.engine
 *.onnx
 peoplenet_vpruned_quantized_decrypted_v2.3.4/
@@ -34,3 +35,5 @@ debug_screen.txt
 debug_telegram_cmd.txt
 recordings/
 demo_recordings/
+# Planches de photos extraites des enregistrements (vie privee) - travail VLM
+_vlm_labeling/
